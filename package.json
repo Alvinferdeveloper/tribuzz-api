@@ -4,7 +4,8 @@
   "description": "",
   "main": "src/index.js",
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "prisma generate && tsc && tsc-alias",
+    "postinstall": "prisma generate",
     "start": "prisma db push && node dist/index.js",
     "dev": "nodemon --watch src --ext ts --exec ts-node -r tsconfig-paths/register src/index.ts",
     "db:push": "prisma db push",
