@@ -63,7 +63,7 @@ Socket.IO → ChatService → IChatAdapter (Redis o InMemory)
 | **better-auth** | Autenticación con email/password + OAuth (Google, Facebook) |
 | **Redis (ioredis)** | Estado del chat distribuido + Socket.IO adapter + cache + rate limiting |
 | **Supabase Storage** | Almacenamiento de imágenes (chat-images, rooms-assets) |
-| **Nodemailer** | Envío de emails de verificación |
+| **Resend** | Envío de emails transaccionales (verificación) vía `services/email` |
 | **Helmet** | Headers de seguridad HTTP |
 | **Zod** | Validación de schemas en requests |
 | **Winston** | Logging estructurado |
@@ -277,12 +277,11 @@ BETTER_AUTH_URL=
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
 
-# Email
-EMAIL_FROM=
-EMAIL_HOST=
-EMAIL_PORT=
-EMAIL_USER=
-EMAIL_PASS=
+# Email (Resend)
+RESEND_API_KEY=        # Requerida en producción; en dev sin key se loguea en consola
+EMAIL_FROM=            # Dirección remitente (dominio verificado en Resend)
+EMAIL_APP_NAME=        # Nombre mostrado en remitente y plantillas (default Tribuzz)
+EMAIL_REPLY_TO=        # Opcional
 
 # Límites
 MAX_ROOMS_PER_DAY=     # Salas que un usuario puede crear por día (default 1)
@@ -324,6 +323,12 @@ npm run seed-admin  # Crear primer usuario ADMIN en la DB
 ### Rutas Admin
 - El router de admin es una función factory que recibe `chatService` como dependencia (para el broadcast)
 - Toda ruta de admin aplica `validateSession + validateAdmin` a nivel de router
+
+### Emails
+- Módulo en `src/services/email/`: `EmailService` depende solo de la interfaz `EmailProvider`
+- Proveedores en `providers/` (`ResendEmailProvider`, `ConsoleEmailProvider`); `createEmailProvider` elige según config
+- Plantillas en `templates/` devuelven `{ subject, html, text }`; escapar valores con `escapeHtml`
+- Nuevo email = nueva plantilla + método en `EmailService`
 
 ### Normalización de nombres de salas
 - Los nombres de salas se normalizan (lowercase, sin acentos, sin caracteres especiales) para búsqueda y unicidad
