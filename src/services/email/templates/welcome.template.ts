@@ -1,34 +1,47 @@
 import { RenderedEmail } from '../email.types';
-import { escapeHtml, renderButton, renderLayout } from './layout';
+import { button, paragraph, steps } from './components';
+import { BrandContext, renderLayout } from './layout';
+import { assets } from './theme';
 
-interface WelcomeTemplateData {
-    appName: string;
-    appUrl: string;
+interface WelcomeTemplateData extends BrandContext {
     name?: string | null;
 }
 
-export const welcomeTemplate = ({ appName, appUrl, name }: WelcomeTemplateData): RenderedEmail => {
-    const exploreUrl = `${appUrl}/tribus`;
-    const greeting = name?.trim() ? `¡Hola, ${name.trim()}!` : '¡Hola!';
-    const subject = `Te damos la bienvenida a ${appName}`;
+const STEPS = [
+    'Explora las tribus y encuentra la de lo que te apasiona.',
+    'Entra y únete a la conversación en tiempo real.',
+    '¿No existe la tuya? Créala e invita a tu gente.',
+];
+
+export const welcomeTemplate = ({ name, ...brand }: WelcomeTemplateData): RenderedEmail => {
+    const exploreUrl = `${brand.appUrl}/tribus`;
+    const firstName = name?.trim().split(/\s+/)[0];
+    const title = firstName ? `¡Hola, ${firstName}! Ya eres parte de ${brand.appName}` : `¡Ya eres parte de ${brand.appName}!`;
+    const intro = 'Aquí cada conversación encuentra su lugar: tribus de lo que te gusta y gente que lo vive igual que tú, hablando en tiempo real.';
 
     const html = renderLayout({
-        appName,
-        title: `Bienvenido a ${appName}`,
-        body: `
-            <p>${escapeHtml(greeting)}</p>
-            <p>Nos alegra tenerte aquí. En ${escapeHtml(appName)} encontrarás tribus de lo que te apasiona y gente con quien conversar en tiempo real.</p>
-            ${renderButton('Explorar tribus', exploreUrl)}
-        `,
+        ...brand,
+        preheader: 'Tu tribu te espera alrededor de la fogata. Así puedes empezar.',
+        hero: { file: assets.heroWelcome, alt: 'Una tribu de Buddies conversa alrededor de una fogata mientras llega alguien nuevo a saludar.' },
+        kicker: 'Tu tribu te espera',
+        title,
+        body: [
+            paragraph(intro),
+            steps(STEPS),
+            button('Explorar tribus', exploreUrl),
+        ].join(''),
+        reason: `Recibes este correo porque creaste una cuenta en ${brand.appName}.`,
     });
 
     const text = [
-        greeting,
+        title,
         '',
-        `Nos alegra tenerte aquí. En ${appName} encontrarás tribus de lo que te apasiona y gente con quien conversar en tiempo real.`,
+        intro,
+        '',
+        ...STEPS.map((step, i) => `${i + 1}. ${step}`),
         '',
         `Explora tribus: ${exploreUrl}`,
     ].join('\n');
 
-    return { subject, html, text };
+    return { subject: `Te damos la bienvenida a ${brand.appName}`, html, text };
 };

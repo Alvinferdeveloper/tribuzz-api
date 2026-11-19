@@ -283,6 +283,7 @@ EMAIL_FROM=            # Dirección remitente (dominio verificado en Resend)
 EMAIL_APP_NAME=        # Nombre mostrado en remitente y plantillas (default Tribuzz)
 EMAIL_REPLY_TO=        # Opcional
 APP_URL=               # URL pública del frontend (enlaces en emails)
+EMAIL_ASSETS_URL=      # Opcional: imágenes de los emails (default APP_URL/email)
 
 # Límites
 MAX_ROOMS_PER_DAY=     # Salas que un usuario puede crear por día (default 1)
@@ -328,7 +329,8 @@ npm run seed-admin  # Crear primer usuario ADMIN en la DB
 ### Emails
 - Módulo en `src/services/email/`: `EmailService` depende solo de la interfaz `EmailProvider`
 - Proveedores en `providers/` (`ResendEmailProvider`, `ConsoleEmailProvider`); `createEmailProvider` elige según config
-- Plantillas en `templates/` devuelven `{ subject, html, text }`; escapar valores con `escapeHtml`
+- Plantillas en `templates/` devuelven `{ subject, html, text }` y usan `renderLayout` (layout.ts) + bloques de `components.ts` (paragraph, button, note, steps, fallbackLink); colores y fuentes de marca en `theme.ts`. Todo valor dinámico pasa por `escapeHtml`
+- Las imágenes (logo, ilustraciones con Buddies) son PNG servidos por el frontend en `/email/*`; se generan con `node scripts/email-assets/generate.mjs` en el repo del frontend (los clientes de email no muestran SVG)
 - Nuevo email = nueva plantilla + método en `EmailService`
 - En flujos de auth se envía con `sendInBackground` (sin `await`): evita enumerar cuentas por tiempos de respuesta y que una caída del proveedor rompa el login
 - Bienvenida: hook `databaseHooks.user.create.after` (cubre email y OAuth). Recuperar contraseña: `emailAndPassword.sendResetPassword`

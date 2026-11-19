@@ -5,6 +5,7 @@ import { createEmailProvider } from './providers';
 import { passwordResetTemplate } from './templates/password-reset.template';
 import { verificationTemplate } from './templates/verification.template';
 import { welcomeTemplate } from './templates/welcome.template';
+import { BrandContext } from './templates/layout';
 
 export class EmailService {
     constructor(
@@ -13,18 +14,23 @@ export class EmailService {
     ) {}
 
     async sendVerificationEmail(to: string, verificationUrl: string): Promise<void> {
-        const email = verificationTemplate({ appName: this.config.appName, verificationUrl });
+        const email = verificationTemplate({ ...this.brand, verificationUrl });
         await this.deliver(to, email, 'verification');
     }
 
     async sendWelcomeEmail(to: string, name?: string | null): Promise<void> {
-        const email = welcomeTemplate({ appName: this.config.appName, appUrl: this.config.appUrl, name });
+        const email = welcomeTemplate({ ...this.brand, name });
         await this.deliver(to, email, 'welcome');
     }
 
     async sendPasswordResetEmail(to: string, resetUrl: string, expiresInMinutes: number): Promise<void> {
-        const email = passwordResetTemplate({ appName: this.config.appName, resetUrl, expiresInMinutes });
+        const email = passwordResetTemplate({ ...this.brand, resetUrl, expiresInMinutes });
         await this.deliver(to, email, 'password-reset');
+    }
+
+    private get brand(): BrandContext {
+        const { appName, appUrl, assetsUrl } = this.config;
+        return { appName, appUrl, assetsUrl };
     }
 
     private async deliver(to: string, email: RenderedEmail, kind: string): Promise<void> {

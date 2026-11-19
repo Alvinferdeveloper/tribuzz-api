@@ -1,34 +1,32 @@
 import { RenderedEmail } from '../email.types';
-import { escapeHtml, renderButton, renderLayout } from './layout';
+import { button, fallbackLink, note, paragraph } from './components';
+import { BrandContext, renderLayout } from './layout';
+import { assets } from './theme';
 
-interface VerificationTemplateData {
-    appName: string;
+interface VerificationTemplateData extends BrandContext {
     verificationUrl: string;
 }
 
-export const verificationTemplate = ({ appName, verificationUrl }: VerificationTemplateData): RenderedEmail => {
-    const subject = `Verifica tu cuenta en ${appName}`;
+export const verificationTemplate = ({ verificationUrl, ...brand }: VerificationTemplateData): RenderedEmail => {
+    const intro = `Confirma que este correo es tuyo para dejar tu cuenta de ${brand.appName} lista. Solo te tomará un clic.`;
+    const ignore = `Si no creaste una cuenta en ${brand.appName}, puedes ignorar este correo sin problema.`;
 
     const html = renderLayout({
-        appName,
-        title: `¡Bienvenido a ${appName}!`,
-        body: `
-            <p>Gracias por registrarte. Solo falta un paso más. Por favor, haz clic en el siguiente botón para verificar tu dirección de correo electrónico y activar tu cuenta:</p>
-            ${renderButton('Verificar mi cuenta', verificationUrl)}
-            <p>Si el botón no funciona, copia y pega la siguiente URL en tu navegador:</p>
-            <p style="font-size: 0.9em; word-break: break-all; color: #007bff;">${escapeHtml(verificationUrl)}</p>
-            <p>Si no te registraste en ${escapeHtml(appName)}, puedes ignorar este mensaje de forma segura.</p>
-        `,
+        ...brand,
+        preheader: 'Un clic y tu cuenta queda lista.',
+        hero: { file: assets.heroVerification, alt: 'Un Buddy sonriente junto a una burbuja con un visto bueno.' },
+        kicker: 'Un paso más',
+        title: 'Confirma tu correo',
+        body: [
+            paragraph(intro),
+            button('Confirmar mi correo', verificationUrl),
+            note(ignore),
+            fallbackLink(verificationUrl),
+        ].join(''),
+        reason: `Recibes este correo porque se usó esta dirección para crear una cuenta en ${brand.appName}.`,
     });
 
-    const text = [
-        `¡Bienvenido a ${appName}!`,
-        '',
-        'Gracias por registrarte. Verifica tu correo visitando el siguiente enlace:',
-        verificationUrl,
-        '',
-        `Si no te registraste en ${appName}, puedes ignorar este mensaje.`,
-    ].join('\n');
+    const text = ['Confirma tu correo', '', intro, '', verificationUrl, '', ignore].join('\n');
 
-    return { subject, html, text };
+    return { subject: `Confirma tu correo en ${brand.appName}`, html, text };
 };

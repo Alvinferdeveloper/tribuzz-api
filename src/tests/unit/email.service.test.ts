@@ -20,6 +20,7 @@ describe('loadEmailConfig', () => {
         expect(config.from).toBe('Tribuzz <onboarding@resend.dev>');
         expect(config.resendApiKey).toBeUndefined();
         expect(config.appUrl).toBe('http://localhost:3000');
+        expect(config.assetsUrl).toBe('http://localhost:3000/email');
         expect(config.isProduction).toBe(false);
     });
 
@@ -63,7 +64,7 @@ describe('EmailService', () => {
         expect(provider.send).toHaveBeenCalledTimes(1);
         const message = (provider.send as jest.Mock).mock.calls[0][0];
         expect(message.to).toBe('user@test.com');
-        expect(message.subject).toBe('Verifica tu cuenta en Tribuzz');
+        expect(message.subject).toBe('Confirma tu correo en Tribuzz');
         expect(message.text).toContain(url);
         expect(message.html).toContain('token=abc&amp;next=&quot;/&quot;');
         expect(message.html).not.toContain(url);
@@ -86,7 +87,19 @@ describe('EmailService', () => {
         const provider = buildProvider();
         await new EmailService(provider, config).sendWelcomeEmail('user@test.com', null);
 
-        expect((provider.send as jest.Mock).mock.calls[0][0].text).toMatch(/^¡Hola!/);
+        expect((provider.send as jest.Mock).mock.calls[0][0].text).toMatch(/^¡Ya eres parte de Tribuzz!/);
+    });
+
+    it('greets by first name and loads brand images from the assets URL', async () => {
+        const provider = buildProvider();
+        const service = new EmailService(provider, { ...config, assetsUrl: 'https://cdn.test/email' });
+
+        await service.sendWelcomeEmail('user@test.com', 'Ana María López');
+
+        const message = (provider.send as jest.Mock).mock.calls[0][0];
+        expect(message.text).toMatch(/^¡Hola, Ana!/);
+        expect(message.html).toContain('https://cdn.test/email/logo.png');
+        expect(message.html).toContain('https://cdn.test/email/hero-welcome.png');
     });
 
     it('sends a password reset email with the link and expiry', async () => {
