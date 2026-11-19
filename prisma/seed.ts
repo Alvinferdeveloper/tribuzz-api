@@ -9,7 +9,19 @@ const hobbies = [
     { name: 'Arte', icon: '🎨' },
     { name: 'Viajes', icon: '✈️' },
     { name: 'Café', icon: '☕' },
-    { name: 'Fitness', icon: '💪' }
+    { name: 'Fitness', icon: '💪' },
+    { name: 'Deportes', icon: '⚽' },
+    { name: 'Cine y series', icon: '🎬' },
+    { name: 'Cocina', icon: '🍳' },
+    { name: 'Mascotas', icon: '🐾' },
+    { name: 'Tecnología', icon: '💻' },
+    { name: 'Naturaleza y senderismo', icon: '🌿' },
+    { name: 'Baile', icon: '💃' },
+    { name: 'Escritura', icon: '✍️' },
+    { name: 'Idiomas', icon: '🌍' },
+    { name: 'Astronomía y ciencia', icon: '🔭' },
+    { name: 'Anime y manga', icon: '🎌' },
+    { name: 'Manualidades', icon: '🧶' },
 ];
 
 const categories = [
