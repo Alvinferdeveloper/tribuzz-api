@@ -181,8 +181,8 @@ export class ChatService {
         };
 
         on('get-initial-room-state', () => this.getInitialRoomState(socket));
-        on('join-room', (room, username) => this.joinRoom(socket, room, username));
-        on('leave-room', () => this.leaveRoom(socket));
+        on('join-room', (room, username) => this.runRoomOp(socket, () => this.joinRoom(socket, room, username)));
+        on('leave-room', () => this.runRoomOp(socket, () => this.leaveRoom(socket)));
         on('message', (payload) => this.handleMessage(socket, payload));
         on('report-user', (payload) => this.handleReportUser(socket, payload));
 
@@ -196,7 +196,20 @@ export class ChatService {
         on('delete-message', (payload) => this.handleDeleteMessage(socket, payload));
         on('start-typing', () => this.handleStartTyping(socket));
         on('stop-typing', () => this.handleStopTyping(socket));
-        on('disconnecting', () => this.handleDisconnect(socket));
+        on('disconnecting', () => this.runRoomOp(socket, () => this.handleDisconnect(socket)));
+    }
+
+    /**
+     * Runs join/leave/disconnect for one socket strictly one after another.
+     * They're async (DB checks, adapter calls), so two join-room events sent
+     * back to back used to both pass their checks before either recorded the
+     * membership, and the room was counted twice for one connection.
+     */
+    private runRoomOp(socket: Socket, op: () => Promise<void>): Promise<void> {
+        const previous: Promise<void> = socket.data.roomOp ?? Promise.resolve();
+        const next = previous.catch(() => undefined).then(op);
+        socket.data.roomOp = next;
+        return next;
     }
 
     private async getInitialRoomState(socket: Socket): Promise<void> {
@@ -205,6 +218,20 @@ export class ChatService {
     }
 
     private async joinRoom(socket: Socket, parentRoom: string, clientUsername: string): Promise<void> {
+        // The same socket asking again for the room it's already in (e.g. the
+        // client re-joining on connect) must not be counted twice: the extra
+        // count stayed after the user left, so others kept seeing them there.
+        if (socket.data.parentRoom === parentRoom && socket.data.subRoomName) {
+            const recentMessages = await this.adapter.getRecentMessages(socket.data.subRoomName, MAX_MESSAGES_HISTORY);
+            socket.emit('message-history', recentMessages);
+            await this._broadcastUserList(socket.data.subRoomName);
+            return;
+        }
+        // Moving to another room without leaving the previous one first.
+        if (socket.data.subRoomName) {
+            await this.leaveRoom(socket);
+        }
+
         const chatEnabled = await isFeatureEnabled(SETTING_KEYS.CHAT_ENABLED);
         if (!chatEnabled) {
             socket.emit('error', ERROR_MESSAGES.CHAT_DISABLED);
@@ -556,6 +583,14 @@ export class ChatService {
         if (!parentRoom || !subRoomName || !userId) return;
 
         this.handleStopTyping(socket);
+        // Forget the membership before counting the leave: leave-room followed
+        // by the socket disconnecting used to decrement the room twice.
+        socket.data.parentRoom = undefined;
+        socket.data.subRoomName = undefined;
+        // While "disconnecting" the socket is still in its rooms; leave now so
+        // the member list broadcast below no longer includes it.
+        socket.leave(subRoomName);
+
         const { totalUsersInParentRoom } = await this.adapter.leaveRoom(parentRoom, subRoomName, userId);
 
         socket.to(subRoomName).emit('user-left', `${username || 'Anónimo'} ha salido de la sala.`);
