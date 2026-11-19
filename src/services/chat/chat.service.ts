@@ -158,23 +158,45 @@ export class ChatService {
     }
 
     public handleConnection(socket: Socket): void {
-        socket.on('get-initial-room-state', () => this.getInitialRoomState(socket));
-        socket.on('join-room', (room, username) => this.joinRoom(socket, room, username));
-        socket.on('leave-room', () => this.leaveRoom(socket));
-        socket.on('message', (payload) => this.handleMessage(socket, payload));
-        socket.on('report-user', (payload) => this.handleReportUser(socket, payload));
+        // Socket.IO doesn't await listeners, so a rejected promise from an async
+        // handler (e.g. a DB timeout inside joinRoom) became an unhandled
+        // rejection and crashed the whole process, dropping every connected
+        // user. Every handler goes through this guard instead: the failure is
+        // logged and reported only to the socket that triggered it.
+        const on = (event: string, handler: (...args: any[]) => unknown) => {
+            socket.on(event, async (...args: any[]) => {
+                try {
+                    await handler(...args);
+                } catch (error) {
+                    logger.error('Socket event handler failed', {
+                        event,
+                        socketId: socket.id,
+                        error: (error as Error).message,
+                    });
+                    if (event !== 'disconnecting' && socket.connected) {
+                        socket.emit('error', 'Algo salió mal. Inténtalo de nuevo en un momento.');
+                    }
+                }
+            });
+        };
 
-        socket.on('request-chat-image-upload', (payload) => this.handleRequestChatImageUpload(socket, payload));
-        socket.on('image', (payload) => this.handleImage(socket, payload));
-        socket.on('audio', (payload) => this.handleAudio(socket, payload));
-        socket.on('gif', (payload) => this.handleGif(socket, payload));
+        on('get-initial-room-state', () => this.getInitialRoomState(socket));
+        on('join-room', (room, username) => this.joinRoom(socket, room, username));
+        on('leave-room', () => this.leaveRoom(socket));
+        on('message', (payload) => this.handleMessage(socket, payload));
+        on('report-user', (payload) => this.handleReportUser(socket, payload));
 
-        socket.on('send_reaction', (payload) => this.handleSendReaction(socket, payload));
-        socket.on('edit-message', (payload) => this.handleEditMessage(socket, payload));
-        socket.on('delete-message', (payload) => this.handleDeleteMessage(socket, payload));
-        socket.on('start-typing', () => this.handleStartTyping(socket));
-        socket.on('stop-typing', () => this.handleStopTyping(socket));
-        socket.on('disconnecting', () => this.handleDisconnect(socket));
+        on('request-chat-image-upload', (payload) => this.handleRequestChatImageUpload(socket, payload));
+        on('image', (payload) => this.handleImage(socket, payload));
+        on('audio', (payload) => this.handleAudio(socket, payload));
+        on('gif', (payload) => this.handleGif(socket, payload));
+
+        on('send_reaction', (payload) => this.handleSendReaction(socket, payload));
+        on('edit-message', (payload) => this.handleEditMessage(socket, payload));
+        on('delete-message', (payload) => this.handleDeleteMessage(socket, payload));
+        on('start-typing', () => this.handleStartTyping(socket));
+        on('stop-typing', () => this.handleStopTyping(socket));
+        on('disconnecting', () => this.handleDisconnect(socket));
     }
 
     private async getInitialRoomState(socket: Socket): Promise<void> {
