@@ -1,9 +1,14 @@
 import { betterAuth } from "better-auth";
 import { customSession } from 'better-auth/plugins'
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { APIError } from "better-auth/api";
 import prisma from "./prisma";
-import { emailService } from '../services/email';
+import { emailService, sendInBackground } from '../services/email';
 import logger from './logger';
+
+const RESET_PASSWORD_TOKEN_TTL_SECONDS = 60 * 60;
+/** Strict per-IP limit on endpoints that send emails, to protect the Resend quota. */
+const EMAIL_ENDPOINT_RATE_LIMIT = { window: 15 * 60, max: 3 };
 
 export const auth = betterAuth({
     database: prismaAdapter(prisma, {
@@ -23,11 +28,24 @@ export const auth = betterAuth({
     emailAndPassword: {
         enabled: true,
         requireEmailVerification: false,
+        resetPasswordTokenExpiresIn: RESET_PASSWORD_TOKEN_TTL_SECONDS,
+        revokeSessionsOnPasswordReset: true,
+        sendResetPassword: async ({ user, url }) => {
+            sendInBackground(
+                emailService.sendPasswordResetEmail(user.email, url, RESET_PASSWORD_TOKEN_TTL_SECONDS / 60),
+            );
+        },
     },
     emailVerification: {
         sendVerificationEmail: async ({ user, url }) => {
             logger.debug('Verification URL generated', { email: user.email });
-            await emailService.sendVerificationEmail(user.email, url);
+            sendInBackground(emailService.sendVerificationEmail(user.email, url));
+        },
+    },
+    rateLimit: {
+        customRules: {
+            '/request-password-reset': EMAIL_ENDPOINT_RATE_LIMIT,
+            '/send-verification-email': EMAIL_ENDPOINT_RATE_LIMIT,
         },
     },
     socialProviders: {
@@ -64,10 +82,17 @@ export const auth = betterAuth({
                     const registrationEnabled = await isFeatureEnabled(SETTING_KEYS.REGISTRATION_ENABLED);
                     if (!registrationEnabled) {
                         const { ERROR_MESSAGES } = await import('./errorMessages');
-                        throw new Error(ERROR_MESSAGES.REGISTRATION_DISABLED);
+                        // APIError keeps the code in the response; a plain Error becomes FAILED_TO_CREATE_USER.
+                        throw new APIError('BAD_REQUEST', {
+                            code: ERROR_MESSAGES.REGISTRATION_DISABLED,
+                            message: ERROR_MESSAGES.REGISTRATION_DISABLED,
+                        });
                     }
                     return { data: user };
-                }
+                },
+                after: async (user) => {
+                    sendInBackground(emailService.sendWelcomeEmail(user.email, user.name));
+                },
             }
         }
     },

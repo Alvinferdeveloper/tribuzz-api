@@ -19,6 +19,7 @@ describe('loadEmailConfig', () => {
         expect(config.appName).toBe('Tribuzz');
         expect(config.from).toBe('Tribuzz <onboarding@resend.dev>');
         expect(config.resendApiKey).toBeUndefined();
+        expect(config.appUrl).toBe('http://localhost:3000');
         expect(config.isProduction).toBe(false);
     });
 
@@ -26,6 +27,10 @@ describe('loadEmailConfig', () => {
         const config = loadEmailConfig({ EMAIL_APP_NAME: 'Acme', EMAIL_FROM: 'no-reply@acme.com', NODE_ENV: 'production' });
         expect(config.from).toBe('Acme <no-reply@acme.com>');
         expect(config.isProduction).toBe(true);
+    });
+
+    it('strips trailing slashes from APP_URL', () => {
+        expect(loadEmailConfig({ APP_URL: 'https://tribuzz.app/' }).appUrl).toBe('https://tribuzz.app');
     });
 });
 
@@ -62,6 +67,36 @@ describe('EmailService', () => {
         expect(message.text).toContain(url);
         expect(message.html).toContain('token=abc&amp;next=&quot;/&quot;');
         expect(message.html).not.toContain(url);
+    });
+
+    it('sends a welcome email with an escaped name and a link to the app', async () => {
+        const provider = buildProvider();
+        const service = new EmailService(provider, { ...config, appUrl: 'https://tribuzz.app' });
+
+        await service.sendWelcomeEmail('user@test.com', '<b>Ana</b>');
+
+        const message = (provider.send as jest.Mock).mock.calls[0][0];
+        expect(message.subject).toBe('Te damos la bienvenida a Tribuzz');
+        expect(message.html).toContain('&lt;b&gt;Ana&lt;/b&gt;');
+        expect(message.html).toContain('https://tribuzz.app/tribus');
+        expect(message.text).toContain('¡Hola, <b>Ana</b>!');
+    });
+
+    it('greets generically when the user has no name', async () => {
+        const provider = buildProvider();
+        await new EmailService(provider, config).sendWelcomeEmail('user@test.com', null);
+
+        expect((provider.send as jest.Mock).mock.calls[0][0].text).toMatch(/^¡Hola!/);
+    });
+
+    it('sends a password reset email with the link and expiry', async () => {
+        const provider = buildProvider();
+        await new EmailService(provider, config).sendPasswordResetEmail('user@test.com', 'https://api.test/reset/abc', 60);
+
+        const message = (provider.send as jest.Mock).mock.calls[0][0];
+        expect(message.subject).toBe('Restablece tu contraseña de Tribuzz');
+        expect(message.text).toContain('https://api.test/reset/abc');
+        expect(message.text).toContain('60 minutos');
     });
 
     it('wraps provider failures in a user-facing error', async () => {

@@ -63,7 +63,7 @@ Socket.IO → ChatService → IChatAdapter (Redis o InMemory)
 | **better-auth** | Autenticación con email/password + OAuth (Google, Facebook) |
 | **Redis (ioredis)** | Estado del chat distribuido + Socket.IO adapter + cache + rate limiting |
 | **Supabase Storage** | Almacenamiento de imágenes (chat-images, rooms-assets) |
-| **Resend** | Envío de emails transaccionales (verificación) vía `services/email` |
+| **Resend** | Emails transaccionales (bienvenida, recuperar contraseña, verificación) vía `services/email` |
 | **Helmet** | Headers de seguridad HTTP |
 | **Zod** | Validación de schemas en requests |
 | **Winston** | Logging estructurado |
@@ -282,6 +282,7 @@ RESEND_API_KEY=        # Requerida en producción; en dev sin key se loguea en c
 EMAIL_FROM=            # Dirección remitente (dominio verificado en Resend)
 EMAIL_APP_NAME=        # Nombre mostrado en remitente y plantillas (default Tribuzz)
 EMAIL_REPLY_TO=        # Opcional
+APP_URL=               # URL pública del frontend (enlaces en emails)
 
 # Límites
 MAX_ROOMS_PER_DAY=     # Salas que un usuario puede crear por día (default 1)
@@ -329,6 +330,9 @@ npm run seed-admin  # Crear primer usuario ADMIN en la DB
 - Proveedores en `providers/` (`ResendEmailProvider`, `ConsoleEmailProvider`); `createEmailProvider` elige según config
 - Plantillas en `templates/` devuelven `{ subject, html, text }`; escapar valores con `escapeHtml`
 - Nuevo email = nueva plantilla + método en `EmailService`
+- En flujos de auth se envía con `sendInBackground` (sin `await`): evita enumerar cuentas por tiempos de respuesta y que una caída del proveedor rompa el login
+- Bienvenida: hook `databaseHooks.user.create.after` (cubre email y OAuth). Recuperar contraseña: `emailAndPassword.sendResetPassword`
+- Endpoints que envían email tienen rate limit propio (3 cada 15 min por IP) en `rateLimit.customRules`
 
 ### Normalización de nombres de salas
 - Los nombres de salas se normalizan (lowercase, sin acentos, sin caracteres especiales) para búsqueda y unicidad

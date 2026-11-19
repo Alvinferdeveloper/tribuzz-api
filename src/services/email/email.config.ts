@@ -1,5 +1,7 @@
 export interface EmailConfig {
     appName: string;
+    /** Public URL of the frontend, used for links inside emails. */
+    appUrl: string;
     from: string;
     replyTo?: string;
     resendApiKey?: string;
@@ -7,6 +9,7 @@ export interface EmailConfig {
 }
 
 const DEFAULT_APP_NAME = 'Tribuzz';
+const DEFAULT_APP_URL = 'http://localhost:3000';
 const DEFAULT_FROM_ADDRESS = 'onboarding@resend.dev';
 
 export const loadEmailConfig = (env: NodeJS.ProcessEnv = process.env): EmailConfig => {
@@ -15,6 +18,7 @@ export const loadEmailConfig = (env: NodeJS.ProcessEnv = process.env): EmailConf
 
     return {
         appName,
+        appUrl: (env.APP_URL?.trim() || DEFAULT_APP_URL).replace(/\/+$/, ''),
         from: `${appName} <${fromAddress}>`,
         replyTo: env.EMAIL_REPLY_TO?.trim() || undefined,
         resendApiKey: env.RESEND_API_KEY?.trim() || undefined,
