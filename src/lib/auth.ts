@@ -22,7 +22,12 @@ export const auth = betterAuth({
         defaultCookieAttributes: {
             sameSite: 'none',
             secure: true
-        }
+        },
+        // Same client IP as the Express limiters (see config/rateLimiters):
+        // behind Render's Cloudflare, CF-Connecting-IP is the real visitor.
+        ipAddress: {
+            ipAddressHeaders: ['cf-connecting-ip', 'x-forwarded-for'],
+        },
     },
 
     emailAndPassword: {

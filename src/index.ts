@@ -37,6 +37,15 @@ const allowedOrigins = JSON.parse(process.env.ALLOWED_ORIGINS || '[]');
 app.set('trust proxy', 1);
 app.use(helmet());
 
+// Before the limiter: a 429 (or any other rejection) must still carry CORS
+// headers, or browsers report it as a CORS error and hide the real status.
+app.use(cors({
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'OPTIONS', 'PATCH', "DELETE"],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
+
 // Request logger middleware
 app.use(requestLogger);
 
@@ -78,13 +87,6 @@ const chatAdapter = setupChatAdapter();
 const chatService = new ChatService(io, chatAdapter);
 
 setupSocketHandlers(io, chatService);
-
-app.use(cors({
-    origin: allowedOrigins,
-    methods: ['GET', 'POST', 'OPTIONS', 'PATCH', "DELETE"],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
 
 //app.use(csrfProtection);
 

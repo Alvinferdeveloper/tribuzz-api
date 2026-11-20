@@ -3,9 +3,23 @@ import { Request } from 'express';
 
 type RateLimitHandler = ReturnType<typeof rateLimit>;
 
+/**
+ * The visitor's real IP. Render serves everything through Cloudflare, so
+ * req.ip (with `trust proxy` 1) was a proxy address shared by many people:
+ * they all drew from one bucket and the whole API returned 429 for everyone.
+ * Cloudflare sets CF-Connecting-IP to the client's address and overwrites any
+ * value a client sends, so it's safe to trust here; req.ip is the fallback
+ * (local development, no Cloudflare in front).
+ */
+export const clientIp = (req: Request): string => {
+    const cfIp = req.headers['cf-connecting-ip'];
+    if (typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
+    return req.ip || 'unknown';
+};
+
 const keyGenerator = (req: Request) => {
     if (req.user?.id) return `user:${req.user.id}`;
-    return ipKeyGenerator(req.ip || 'unknown');
+    return ipKeyGenerator(clientIp(req));
 };
 
 export const generalLimiter: RateLimitHandler = rateLimit({
