@@ -12,6 +12,7 @@ import * as ReportRepo from '../../repositories/report.repository';
 import { supabase } from '@/lib/supabase';
 import ApiError, { ERROR_MESSAGES } from '@/utils/ApiError';
 import logger from '@/lib/logger';
+import { CHAT_UPLOAD_RULES, chatUploadKind, extensionFor, type ChatUploadKind } from '@/utils/uploadPolicy';
 
 const sanitizeOptions: sanitizeHtml.IOptions = {
     allowedTags: ['b', 'i', 'em', 'strong', 'a'],
@@ -19,27 +20,36 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
     allowedSchemes: ['http', 'https']
 };
 
-const ALLOWED_MEDIA_DOMAINS = [
-    'storage.googleapis.com',
-    'supabase.co',
-    'media4.giphy.com',
-    'media0.giphy.com',
-    'media1.giphy.com',
-    'media2.giphy.com',
-    'media3.giphy.com',
-    'i.giphy.com'
-];
+const CHAT_BUCKET = 'chat-images';
+const GIPHY_DOMAINS = ['giphy.com'];
 
-const isValidMediaUrl = (url: string): boolean => {
+/** Upload requests allowed per socket per minute (presigned URLs aren't free). */
+const UPLOAD_REQUESTS_PER_MINUTE = 10;
+
+const isHttpsUrl = (url: unknown): url is string => {
     try {
-        const parsed = new URL(url);
-        if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-        return ALLOWED_MEDIA_DOMAINS.some(domain =>
-            parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`)
-        );
+        return typeof url === 'string' && new URL(url).protocol === 'https:';
     } catch {
         return false;
     }
+};
+
+/**
+ * A file uploaded through our own presigned flow: our bucket, this
+ * sub-room, the right folder. Anything else (another Supabase project,
+ * another bucket or room) is rejected.
+ */
+const isOwnChatUpload = (url: unknown, subRoomName: string, kind: ChatUploadKind): boolean => {
+    if (!isHttpsUrl(url)) return false;
+    // Same builder that produced the URL when the upload was granted.
+    const prefix = supabase.storage.from(CHAT_BUCKET).getPublicUrl(`${subRoomName}/${CHAT_UPLOAD_RULES[kind].folder}/`).data.publicUrl;
+    return url.startsWith(prefix) && !url.slice(prefix.length).includes('/');
+};
+
+const isGiphyUrl = (url: unknown): boolean => {
+    if (!isHttpsUrl(url)) return false;
+    const { hostname } = new URL(url);
+    return GIPHY_DOMAINS.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
 };
 
 const MAX_MESSAGES_HISTORY = parseInt(process.env.MAX_MESSAGES_HISTORY || '10', 10);
@@ -376,27 +386,48 @@ export class ChatService {
         }
     }
 
-    private async handleRequestChatImageUpload(socket: Socket, payload: { contentType: string, tempId: string }) {
+    /**
+     * Grants a presigned URL to upload one chat image or voice note straight
+     * to storage. The type must be on the allowlist and the extension comes
+     * from it (never from the client); the declared size is checked here and
+     * the bucket's own limits enforce the real one on upload.
+     */
+    private async handleRequestChatImageUpload(socket: Socket, payload: { contentType?: string; tempId?: string; size?: number }) {
         const { subRoomName, user } = socket.data;
-        if (!subRoomName) return socket.emit('error', 'No estás en una sala para enviar imágenes.');
+        if (!subRoomName) return socket.emit('error', 'No estás en una sala para enviar archivos.');
+
+        const kind = chatUploadKind(payload?.contentType);
+        if (!kind) return socket.emit('error', 'Ese tipo de archivo no se puede enviar.');
+        const rule = CHAT_UPLOAD_RULES[kind];
+        const extension = extensionFor(payload.contentType, rule.types)!;
+
+        if (typeof payload.size === 'number' && payload.size > rule.maxBytes) {
+            return socket.emit('error', `El archivo supera el máximo de ${Math.round(rule.maxBytes / (1024 * 1024))} MB.`);
+        }
+
+        // Sliding one-minute window per socket.
+        const now = Date.now();
+        const recent: number[] = (socket.data.uploadRequests ?? []).filter((t: number) => now - t < 60_000);
+        if (recent.length >= UPLOAD_REQUESTS_PER_MINUTE) {
+            return socket.emit('error', 'Estás enviando archivos muy rápido. Espera un momento.');
+        }
+        socket.data.uploadRequests = [...recent, now];
 
         try {
-            const bucketName = 'chat-images';
-            const fileExtension = payload.contentType.split('/')[1] || 'jpg';
-            const userIdForImage = user ? user.id : 'anonymous';
-            const filePath = `${subRoomName}/${userIdForImage}-${Date.now()}.${fileExtension}`;
+            const owner = user ? user.id : 'anonymous';
+            const filePath = `${subRoomName}/${rule.folder}/${owner}-${now}-${crypto.randomUUID().slice(0, 8)}.${extension}`;
 
             const { data, error } = await supabase.storage
-                .from(bucketName)
+                .from(CHAT_BUCKET)
                 .createSignedUploadUrl(filePath, { upsert: false });
 
             if (error) {
                 logger.error('Supabase createSignedUploadUrl error', { error: (error as Error).message });
-                socket.emit('error', 'No se pudo procesar la subida de la imagen.');
+                socket.emit('error', 'No se pudo procesar la subida del archivo.');
                 return;
             }
 
-            const { data: publicUrlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+            const { data: publicUrlData } = supabase.storage.from(CHAT_BUCKET).getPublicUrl(filePath);
 
             socket.emit('grant-chat-image-upload', {
                 tempId: payload.tempId,
@@ -404,8 +435,8 @@ export class ChatService {
                 publicUrl: publicUrlData.publicUrl,
             });
         } catch (error) {
-            logger.error('Error handling request for chat image upload', { error: (error as Error).message });
-            socket.emit('error', 'No se pudo procesar la subida de la imagen.');
+            logger.error('Error handling request for chat upload', { error: (error as Error).message });
+            socket.emit('error', 'No se pudo procesar la subida del archivo.');
         }
     }
 
@@ -416,7 +447,7 @@ export class ChatService {
             return;
         }
 
-        if (!isValidMediaUrl(payload.imageUrl)) {
+        if (!isOwnChatUpload(payload.imageUrl, subRoomName, 'image')) {
             socket.emit('error', 'URL de imagen no permitida');
             return;
         }
@@ -445,7 +476,7 @@ export class ChatService {
             return;
         }
 
-        if (!isValidMediaUrl(payload.audioUrl)) {
+        if (!isOwnChatUpload(payload.audioUrl, subRoomName, 'audio')) {
             socket.emit('error', 'URL de audio no permitida');
             return;
         }
@@ -474,7 +505,7 @@ export class ChatService {
             return;
         }
 
-        if (!isValidMediaUrl(payload.gifUrl)) {
+        if (!isGiphyUrl(payload.gifUrl)) {
             socket.emit('error', 'URL de GIF no permitida');
             return;
         }
