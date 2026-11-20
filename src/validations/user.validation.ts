@@ -1,3 +1,4 @@
+import { extensionFor, IMAGE_TYPES } from '@/utils/uploadPolicy';
 import { z } from 'zod';
 
 export const completeUserProfileSchema = z.object({
@@ -31,7 +32,8 @@ export const updateUserProfileSchema = z.object({
 
 export const generateUploadUrlSchema = z.object({
     body: z.object({
-        fileName: z.string().min(1, 'El nombre del archivo es requerido.'),
-        contentType: z.string().refine(val => val.startsWith('image/'), 'El contentType debe ser una imagen.'),
+        // Kept for older clients; the server names the file itself.
+        fileName: z.string().optional(),
+        contentType: z.string().refine(val => extensionFor(val, IMAGE_TYPES) !== null, 'Solo se permiten imágenes JPG, PNG, WEBP o GIF.'),
     }),
 });

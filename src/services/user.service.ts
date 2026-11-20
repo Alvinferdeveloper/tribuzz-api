@@ -1,3 +1,4 @@
+import { extensionFor, IMAGE_TYPES } from '@/utils/uploadPolicy';
 import * as UserRepository from '../repositories/user.repository';
 import * as HobbyRepository from '../repositories/hobby.repository';
 import { ProfileInfo } from '@/types/user';
@@ -55,14 +56,18 @@ export const updateUserProfileAttribute = async (userId: string, field: string, 
 
 /**
  * Generates a pre-signed URL for uploading a user's profile image to Supabase Storage.
+ * The file name is chosen here: it used to come from the client and went
+ * straight into the storage path (with upsert), so a crafted name could
+ * point outside the user's own folder.
  * @param userId - The ID of the user.
- * @param fileName - The desired file name for the image.
+ * @param contentType - The image's MIME type (already validated).
  * @returns An object containing the signed upload URL and the public URL of the file.
  * @throws {ApiError} If there is an error generating the signed URL.
  */
-export const generateProfileUploadUrl = async (userId: string, fileName: string) => {
+export const generateProfileUploadUrl = async (userId: string, contentType: string) => {
     const bucketName = 'avatars';
-    const filePath = `${userId}/${fileName}`;
+    const extension = extensionFor(contentType, IMAGE_TYPES) ?? 'jpg';
+    const filePath = `${userId}/avatar-${Date.now()}.${extension}`;
 
     const { data: uploadData, error: uploadError } = await supabase.storage
         .from(bucketName)

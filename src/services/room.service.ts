@@ -1,3 +1,4 @@
+import { extensionFor, IMAGE_TYPES } from '@/utils/uploadPolicy';
 import * as RoomRepository from '../repositories/room.repository';
 import { recordActivity } from '../repositories/user-room-activity.repository';
 import * as CategoryRepository from '../repositories/category.repository';
@@ -139,7 +140,8 @@ export const generateRoomUploadUrl = async (roomId: string, type: 'banner' | 'ic
     }
 
     const bucketName = 'rooms-assets';
-    const fileExtension = contentType.split('/')[1] || 'jpg';
+    // Extension from the allowlist, never from the client's string.
+    const fileExtension = extensionFor(contentType, IMAGE_TYPES) ?? 'jpg';
     const filePath = `${roomId}/${type}.${fileExtension}`;
 
     const { data: uploadData, error: uploadError } = await supabase.storage

@@ -57,9 +57,9 @@ export const generateProfileUploadUrl = async (req: Request, res: Response) => {
         throw new ApiError(401, ERROR_MESSAGES.UNAUTHORIZED);
     }
 
-    const { fileName } = req.body;
+    const { contentType } = req.body;
 
-    const urls = await UserService.generateProfileUploadUrl(user.id, fileName);
+    const urls = await UserService.generateProfileUploadUrl(user.id, contentType);
 
     if (!urls) {
         throw new ApiError(503, ERROR_MESSAGES.STORAGE_UNAVAILABLE);

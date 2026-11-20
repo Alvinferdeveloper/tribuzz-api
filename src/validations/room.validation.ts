@@ -1,3 +1,4 @@
+import { extensionFor, IMAGE_TYPES } from '@/utils/uploadPolicy';
 import { z } from 'zod';
 
 export const getRoomsSchema = z.object({
@@ -39,7 +40,7 @@ export const generateRoomUploadUrlSchema = z.object({
         type: z.enum(['banner', 'icon'] as const, {
             message: 'El tipo de imagen (banner o icon) es requerido.',
         }),
-        contentType: z.string().refine(val => val.startsWith('image/'), 'El contentType debe ser una imagen (ej. image/jpeg).'),
+        contentType: z.string().refine(val => extensionFor(val, IMAGE_TYPES) !== null, 'Solo se permiten imágenes JPG, PNG, WEBP o GIF.'),
     }),
 });
 
